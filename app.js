@@ -22,7 +22,7 @@ catch(e) {
 // get whitelist from whitelist.txt
 var whitelist;
 try {
-    whitelist = fs.readFileSync('whitelist.txt', 'utf8').split(',\r');
+    whitelist = fs.readFileSync('whitelist.txt', 'utf8').split('\r');
 }
 catch(e) {
     whitelist = [];

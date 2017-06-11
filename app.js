@@ -3,9 +3,12 @@ const fs    = require('fs'),
       Masto = require('mastodon'),
       auth  = require('./auth');
 
+const INTERVAL_SEC = 2;         // interval for accessing accounts' statuses.
+const FOLLOWINGS_LIMIT = 80;    // number of following limit when retrieving accounts.
+const GUILTY_PERIOD = 14        // in days
+const EXECUTE_UNDEFINED = true  // unfollow who does not have toot (if remote account, we can't access to whole status that account has, so be careful enabling it.)
 
-// get prefs from pref.json. (use pref.template.json as a template)
-// first, use auth.js to get instances' access_tokens.
+// get prefs from pref.json.
 var pref;
 try {
     pref = JSON.parse(fs.readFileSync('pref.json', 'utf-8'));
@@ -16,10 +19,14 @@ catch(e) {
     return;
 }
 
-const INTERVAL_SEC = 2;         // interval for accessing accounts' statuses.
-const FOLLOWINGS_LIMIT = 80;    // number of following limit when retrieving accounts.
-const GUILTY_PERIOD = 14        // in days
-const EXECUTE_UNDEFINED = true  // unfollow who does not have toot (if remote account, we can't access to whole status that account has, so be careful enabling it.)
+// get whitelist from whitelist.txt
+var whitelist;
+try {
+    whitelist = fs.readFileSync('whitelist.txt', 'utf8').split(',\r');
+}
+catch(e) {
+    whitelist = [];
+}
 
 // instance initialzation
 let M = new Masto({
@@ -74,9 +81,6 @@ var getFollowings = (id, accounts, max_id) => {
     });
 };
 
-
-
-
 /**
  * Execute(unfollow) account if GUILTY_PERIOD(days) has passed with latest toot.
  * @param {array} accounts 
@@ -85,34 +89,39 @@ var ExecuteAccounts = (accounts) => {
     var q = new TimedQueue(INTERVAL_SEC * 1000);
     
     accounts.forEach(account => {
-        q.add(() => {
-            let domain = account.acct.split('@')[1];
-            M.get('accounts/' + account.id + '/statuses')
-            .then(res => {
-                let status = res.data[0];
-                if (status !== undefined) {
-                    let lastest_date = new Date(status.created_at);
-                    let days_passed = lastest_date.getDaysBetween(new Date());
-                    
-                    console.log('account: ' + account.acct);
-                    console.log('tooted ' + days_passed + ' day(s) ago.');
+        if(whitelist.indexOf(account) === -1) {
+            q.add(() => {
+                M.get('accounts/' + account.id + '/statuses')
+                .then(res => {
+                    let status = res.data[0];
+                    if (status !== undefined) {
+                        let lastest_date = new Date(status.created_at);
+                        let days_passed = lastest_date.getDaysBetween(new Date());
+                        
+                        console.log('account: ' + account.acct + ' id: ' + account.id);
+                        console.log('tooted ' + days_passed + ' day(s) ago.');
 
-                    if(days_passed >= GUILTY_PERIOD) {
-                        ExecuteAccount(account);
+                        if(days_passed >= GUILTY_PERIOD) {
+                            ExecuteAccount(account);
+                        }
+                    } else {
+                        console.log('status not found: ' + account.acct);
+                        if(EXECUTE_UNDEFINED){
+                            ExecuteAccount(account);
+                        }
                     }
-                } else {
-                    console.log('status not found: ' + account.acct);
-                    if(EXECUTE_UNDEFINED){
-                        ExecuteAccount(account);
-                    }
-                }
-                console.log("------------------------------")
-            })
-        })    
+                    console.log("------------------------------");
+                })
+            })    
+        }
     });
     q.run();
 };
 
+/**
+ * Execute (unfollow) account
+ * @param {object} account 
+ */
 var ExecuteAccount = (account) => {
     M.post('accounts/' + account.id + '/unfollow')
     .then(res => {

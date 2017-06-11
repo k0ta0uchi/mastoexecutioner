@@ -1,6 +1,6 @@
 {
   "name": "mastoexecutioner",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Execute (unfollow) tooters who are not distracted for a while.",
   "main": "app.js",
   "scripts": {
